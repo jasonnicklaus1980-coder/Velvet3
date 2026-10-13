@@ -21,15 +21,30 @@ jobs:
 
       - name: Install build tools
         run: |
-          apt-get update -qq
-          apt-get install -y -qq gcc gcc-arm-linux-gnueabihf libc6-dev-armhf-cross binutils-arm-linux-gnueabihf \
-            make python3 zip qemu-user >/dev/null
+          # Debian 11 is retired; once its packages move to archive.debian.org, use the archive instead
+          if ! apt-get update -qq; then
+            echo "Debian 11 mirrors unavailable: switching to archive.debian.org"
+            printf '%s\n' \
+              "deb http://archive.debian.org/debian bullseye main" \
+              "deb http://archive.debian.org/debian bullseye-updates main" \
+              "deb http://archive.debian.org/debian-security bullseye-security main" > /etc/apt/sources.list
+            rm -f /etc/apt/sources.list.d/*
+            apt-get -o Acquire::Check-Valid-Until=false update -qq
+          fi
+          apt-get install -y -qq --no-install-recommends ca-certificates gcc libc6-dev gcc-arm-linux-gnueabihf \
+            libc6-dev-armhf-cross binutils-arm-linux-gnueabihf make python3 zip
+          # ARM emulator for the plugin test; the build still works without it
+          apt-get install -y -qq --no-install-recommends qemu-user || echo "qemu-user unavailable: ARM emulation test will be skipped"
 
       - name: Native build and tests
         run: make test
 
-      - name: ARM build, binary checks, plugin test under ARM emulation
-        run: make arm-test
+      - name: ARM build and binary checks
+        run: make arm
+
+      - name: Plugin test under ARM emulation
+        run: |
+          if command -v qemu-arm >/dev/null; then make arm-test; else echo "skipped: no qemu-arm"; fi
 
       - name: Package installer zip
         run: make release
