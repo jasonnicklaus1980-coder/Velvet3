@@ -1,0 +1,46 @@
+# Builds the MPC (32-bit ARM) plugin on GitHub's servers, runs every test, and packages the installer zip.
+# Push to main: the zip appears under Actions > the run > Artifacts.
+# Push a tag like v1.0.0: the zip is also attached to a GitHub Release.
+name: Build MPC plugin
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Debian 11 toolchain: keeps glibc symbol versions old enough for MPC OS (scripts/check_so.sh enforces it)
+    container: debian:bullseye
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq gcc gcc-arm-linux-gnueabihf libc6-dev-armhf-cross binutils-arm-linux-gnueabihf \
+            make python3 zip qemu-user >/dev/null
+
+      - name: Native build and tests
+        run: make test
+
+      - name: ARM build, binary checks, plugin test under ARM emulation
+        run: make arm-test
+
+      - name: Package installer zip
+        run: make release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VelvetChords-MPC
+          path: dist/*.zip
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
